@@ -140,12 +140,11 @@ export class TransactionProcessor {
             statistics.noncesLeft = currentNonce - lastProcessedNonce;
             statistics.secondsLeft = statistics.noncesLeft / statistics.noncesPerSecond * 1.1;
             this.logMessage(LogTopic.Debug, `For shardId ${shardId} and nonce ${nonce}, notifying transactions with hashes ${validTransactions.map(x => x.hash)}`);
-
-            await this.onTransactionsReceived(shardId, nonce, validTransactions, statistics, blockHash);
+            await this.onTransactionsReceived(shardId, nonce, transactionsResult.round, transactionsResult.timestamp, validTransactions, statistics, blockHash);
           }
 
           if (crossShardTransactions.length > 0) {
-            await this.onTransactionsPending(shardId, nonce, crossShardTransactions);
+            await this.onTransactionsPending(shardId, nonce, transactionsResult.round, transactionsResult.timestamp,crossShardTransactions);
           }
 
           this.logMessage(LogTopic.Debug, `Setting last processed nonce for shardId ${shardId} to ${nonce}`);
@@ -240,7 +239,7 @@ export class TransactionProcessor {
             statistics.secondsLeft = statistics.noncesLeft / statistics.noncesPerSecond * 1.1;
 
             this.logMessage(LogTopic.Debug, `For shardId ${shardId} and nonce ${nonce}, notifying transactions with hashes ${transactions.map(x => x.hash)}`);
-            await this.onTransactionsReceived(shardId, nonce, transactions, statistics, blockHash);
+            await this.onTransactionsReceived(shardId, nonce, transactionsResult.round, transactionsResult.timestamp, transactions, statistics, blockHash);
           }
         }
 
@@ -344,39 +343,43 @@ export class TransactionProcessor {
     return result;
   }
 
-  private async getShardTransactions(shardId: number, nonce: number): Promise<{ blockHash: string, transactions: ShardTransaction[] } | undefined> {
+  private async getShardTransactions(shardId: number, nonce: number): Promise<{ blockHash: string, round: number, timestamp: number, transactions: ShardTransaction[] } | undefined> {
     const result = await this.gatewayGet(`block/${shardId}/by-nonce/${nonce}?withTxs=true`);
 
     if (!result || !result.block) {
       this.logMessage(LogTopic.Debug, `Block for shardId ${shardId} and nonce ${nonce} is undefined or block not available`);
       return undefined;
     }
+    const round = result.block.round;
+    const timestamp = result.block.timestamp;
 
     if (result.block.miniBlocks === undefined) {
       this.logMessage(LogTopic.Debug, `Block for shardId ${shardId} and nonce ${nonce} does not contain any miniBlocks`);
-      return { blockHash: result.block.hash, transactions: [] };
+      return { blockHash: result.block.hash, round, timestamp, transactions: [] };
     }
 
     const transactions: ShardTransaction[] = this.selectMany(result.block.miniBlocks, (item: any) => item.transactions ?? [])
       .map((item: any) => TransactionProcessor.itemToShardTransaction(item));
 
-    return { blockHash: result.block.hash, transactions };
+    return { blockHash: result.block.hash, round, timestamp, transactions };
   }
 
-  private async getHyperblockTransactions(nonce: number): Promise<{ blockHash: string, transactions: ShardTransaction[] } | undefined> {
+  private async getHyperblockTransactions(nonce: number): Promise<{ blockHash: string, round: number, timestamp: number, transactions: ShardTransaction[] } | undefined> {
     const result = await this.gatewayGet(`hyperblock/by-nonce/${nonce}`);
+    const round=result.hyperblock.round;
+    const timestamp=result.hyperblock.timestamp;
     if (!result) {
       return undefined;
     }
     const { hyperblock: { hash, transactions } } = result;
     if (transactions === undefined) {
-      return { blockHash: hash, transactions: [] };
+      return { blockHash: hash, round, timestamp,transactions: [] };
     }
 
     const shardTransactions: ShardTransaction[] = transactions
       .map((item: any) => TransactionProcessor.itemToShardTransaction(item));
 
-    return { blockHash: hash, transactions: shardTransactions };
+    return { blockHash: hash, round, timestamp, transactions: shardTransactions };
   }
 
   static itemToShardTransaction(item: any): ShardTransaction {
@@ -394,6 +397,7 @@ export class TransactionProcessor {
     transaction.gasPrice = item.gasPrice;
     transaction.gasLimit = item.gasLimit;
     transaction.epoch = item.epoch;
+
     return transaction;
   }
 
@@ -471,14 +475,14 @@ export class TransactionProcessor {
     await setLastProcessedNonceFunc(shardId, nonce);
   }
 
-  private async onTransactionsReceived(shardId: number, nonce: number, transactions: ShardTransaction[], statistics: TransactionStatistics, blockHash: string) {
+  private async onTransactionsReceived(shardId: number, nonce: number, round: number, timestamp: number, transactions: ShardTransaction[], statistics: TransactionStatistics, blockHash: string) {
     const onTransactionsReceivedFunc = this.options.onTransactionsReceived;
     if (onTransactionsReceivedFunc) {
-      await onTransactionsReceivedFunc(shardId, nonce, transactions, statistics, blockHash);
+      await onTransactionsReceivedFunc(shardId, nonce, round, timestamp, transactions, statistics, blockHash);
     }
   }
 
-  private async onTransactionsPending(shardId: number, nonce: number, transactions: ShardTransaction[]) {
+  private async onTransactionsPending(shardId: number, nonce: number, round: number, timestamp: number, transactions: ShardTransaction[]) {
     const onTransactionsPendingFunc = this.options.onTransactionsPending;
     if (onTransactionsPendingFunc) {
       await onTransactionsPendingFunc(shardId, nonce, transactions);
@@ -563,7 +567,7 @@ export class TransactionProcessorOptions {
   notifyEmptyBlocks?: boolean;
   includeCrossShardStartedTransactions?: boolean;
   mode?: TransactionProcessorMode;
-  onTransactionsReceived?: (shardId: number, nonce: number, transactions: ShardTransaction[], statistics: TransactionStatistics, blockHash: string) => Promise<void>;
+  onTransactionsReceived?: (shardId: number, nonce: number, round: number, timestamp: number, transactions: ShardTransaction[], statistics: TransactionStatistics, blockHash: string) => Promise<void>;
   onTransactionsPending?: (shardId: number, nonce: number, transactions: ShardTransaction[]) => Promise<void>;
   getLastProcessedNonce?: (shardId: number, currentNonce: number) => Promise<number | undefined>;
   setLastProcessedNonce?: (shardId: number, nonce: number) => Promise<void>;
