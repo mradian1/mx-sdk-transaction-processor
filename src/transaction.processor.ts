@@ -344,8 +344,9 @@ export class TransactionProcessor {
   }
 
   private async getShardTransactions(shardId: number, nonce: number): Promise<{ blockHash: string, round: number, timestamp: number, transactions: ShardTransaction[] } | undefined> {
+    console.log('asking for result - shardTransactions');
     const result = await this.gatewayGet(`block/${shardId}/by-nonce/${nonce}?withTxs=true`);
-
+    console.log('got result - shardTransactions');
     if (!result || !result.block) {
       this.logMessage(LogTopic.Debug, `Block for shardId ${shardId} and nonce ${nonce} is undefined or block not available`);
       return undefined;
@@ -365,7 +366,9 @@ export class TransactionProcessor {
   }
 
   private async getHyperblockTransactions(nonce: number): Promise<{ blockHash: string, round: number, timestamp: number, transactions: ShardTransaction[] } | undefined> {
+    console.log('asking for result - hyberblockTransactions');
     const result = await this.gatewayGet(`hyperblock/by-nonce/${nonce}`);
+    console.log('got result hyberblockTransactions');
     const round=result.hyperblock.round;
     const timestamp=result.hyperblock.timestamp;
     if (!result) {

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 
-import { Mode, TransactionProcessor, ShardTransaction } from '../../src/transaction.processor';
+import { TransactionProcessor, ShardTransaction, TransactionProcessorMode } from '../../src/transaction.processor';
 import { Locker } from '../utils/locker';
 
 @Injectable()
@@ -18,8 +18,8 @@ export class TransactionProcessorService {
   async handleNewMultiversxTransactions() {
     Locker.lock('newMultiversxTransactions', async () => {
         await this.transactionProcessor.start({
-          mode: Mode.ProcessByHyperblockTransactions,
-          gatewayUrl: 'https://gateway.multiversx.com', // mainnet
+          mode: TransactionProcessorMode.Shardblock,
+          gatewayUrl: 'https://gateway.multiversx.com', //'https://api.multiversx.com', //'https://gateway.multiversx.com', // mainnet
           getLastProcessedNonce: async (_shardId: number, _currentNonce: number) => {
             // In ProcessByHyperblockTransactions shardId will always be METACHAIN
             return this.lastNonce;
@@ -28,8 +28,8 @@ export class TransactionProcessorService {
             // In ProcessByHyperblockTransactions shardId will always be METACHAIN
             this.lastNonce = nonce;
           },
-          onTransactionsReceived: async (shardId: number, nonce: number, transactions: ShardTransaction[]) => {
-            console.log(`Received ${transactions.length} transactions on shard ${shardId} and nonce ${nonce}`);
+          onTransactionsReceived: async (shardId: number, nonce: number, round: number, timestamp: number, transactions: ShardTransaction[]) => {
+            console.log(`Received ${transactions.length} transactions on shard ${shardId} and nonce ${nonce} at round ${round} (timestamp: ${timestamp})`);
           }
         });
     });
